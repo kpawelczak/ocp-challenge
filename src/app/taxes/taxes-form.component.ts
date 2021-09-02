@@ -16,6 +16,12 @@ import { combineLatest } from 'rxjs';
         >{{contractType}}</option>
       </select>
 
+      <label *ngIf="isContract('B2B')">
+        <input [formControlName]="'newOrder'"
+               type="checkbox">
+        New Order
+      </label>
+
       <label>
         Employee gross
         <input [formControlName]="'employeeGross'" type="number">
@@ -38,13 +44,14 @@ export class TaxesFormComponent implements OnInit {
 
   form: FormGroup;
 
-  grossAfterTax: string = '';
+  grossAfterTax: string = '0.00';
 
   contractTypes = ['UoP', 'B2B'];
 
   constructor(private readonly formBuilder: FormBuilder,
               private readonly changeDetectorRef: ChangeDetectorRef) {
     this.form = this.formBuilder.group({
+      newOrder: [],
       contract: [this.contractTypes[0], Validators.required],
       employeeGross: ['', Validators.required]
     });
@@ -53,10 +60,11 @@ export class TaxesFormComponent implements OnInit {
   ngOnInit() {
     combineLatest([
       this.form.controls['employeeGross'].valueChanges,
-      this.form.controls['contract'].valueChanges.pipe(startWith(this.contractTypes[0]))
+      this.form.controls['contract'].valueChanges.pipe(startWith(this.contractTypes[0])),
+      this.form.controls['newOrder'].valueChanges.pipe(startWith(false))
     ])
       .pipe(
-        map(([gross, contract]: [number, string]) => {
+        map(([gross, contract, newOrder]: [number, string, boolean]) => {
           return this.getGrossAfterTaxBasedOnContract(gross, contract);
         })
       )
@@ -80,7 +88,10 @@ export class TaxesFormComponent implements OnInit {
       }
 
       case contractType === 'B2B': {
-        return this.getGrossAfterTax(gross, TaxesFormComponent.B2B_TAX);
+        const grossAfterTax = this.getGrossAfterTax(gross, TaxesFormComponent.B2B_TAX);
+        return this.isContract('B2B') && this.form.controls['newOrder'].value === true
+          ? grossAfterTax * 1.09
+          : grossAfterTax;
       }
 
       default: {
@@ -91,6 +102,10 @@ export class TaxesFormComponent implements OnInit {
 
   getGrossAfterTax(gross: number, tax: number): number {
     return gross / tax;
+  }
+
+  isContract(contractType: string): boolean {
+    return contractType === this.form.controls['contract'].value;
   }
 }
 
