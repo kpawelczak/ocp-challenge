@@ -1,13 +1,20 @@
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnInit, ViewEncapsulation } from '@angular/core';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { UntilDestroy } from '@ngneat/until-destroy';
-import { filter, map } from 'rxjs/operators';
+import { map, startWith } from 'rxjs/operators';
+import { combineLatest } from 'rxjs';
 
 @UntilDestroy({ checkProperties: true })
 @Component({
   selector: 'taxes-form',
   template: `
     <form [formGroup]="form">
+
+      <select [formControlName]="'contract'">
+        <option *ngFor="let contractType of contractTypes"
+                [value]="contractType"
+        >{{contractType}}</option>
+      </select>
 
       <label>
         Employee gross
@@ -17,7 +24,7 @@ import { filter, map } from 'rxjs/operators';
     </form>
 
     <div>
-      Gross: {{getResult()}}
+      Net: {{grossAfterTax}}
     </div>
   `,
   encapsulation: ViewEncapsulation.None,
@@ -25,44 +32,65 @@ import { filter, map } from 'rxjs/operators';
 })
 export class TaxesFormComponent implements OnInit {
 
-  private static readonly LOWER_TAX = 0.17;
-  private static readonly HIGHER_TAX = 0.32;
+  private static readonly LOWER_TAX = 1.17;
+  private static readonly HIGHER_TAX = 1.32;
+  private static readonly B2B_TAX = 1.19;
 
   form: FormGroup;
 
-  grossAfterTax: number = 0;
+  grossAfterTax: string = '';
+
+  contractTypes = ['UoP', 'B2B'];
 
   constructor(private readonly formBuilder: FormBuilder,
               private readonly changeDetectorRef: ChangeDetectorRef) {
     this.form = this.formBuilder.group({
+      contract: [this.contractTypes[0], Validators.required],
       employeeGross: ['', Validators.required]
     });
   }
 
   ngOnInit() {
-    this.form.controls['employeeGross']
-      .valueChanges
+    combineLatest([
+      this.form.controls['employeeGross'].valueChanges,
+      this.form.controls['contract'].valueChanges.pipe(startWith(this.contractTypes[0]))
+    ])
       .pipe(
-        filter(gross => gross),
-        map((gross: number) => {
-          return gross > 7000
-            ? this.getGrossAfterTax(gross, TaxesFormComponent.HIGHER_TAX)
-            : this.getGrossAfterTax(gross, TaxesFormComponent.LOWER_TAX);
+        map(([gross, contract]: [number, string]) => {
+          return this.getGrossAfterTaxBasedOnContract(gross, contract);
         })
       )
       .subscribe((grossAfterTax: number) => {
-        this.grossAfterTax = grossAfterTax;
+        this.grossAfterTax = this.getResult(grossAfterTax);
         this.changeDetectorRef.detectChanges();
       });
   }
 
-  getResult(): string {
-    return this.grossAfterTax.toFixed(2);
+  getResult(grossAfterTax: number): string {
+    return grossAfterTax.toFixed(2);
+  }
+
+  getGrossAfterTaxBasedOnContract(gross: number, contractType: string): number {
+    switch (true) {
+
+      case contractType === 'UoP': {
+        return gross > 7000
+          ? this.getGrossAfterTax(gross, TaxesFormComponent.HIGHER_TAX)
+          : this.getGrossAfterTax(gross, TaxesFormComponent.LOWER_TAX);
+      }
+
+      case contractType === 'B2B': {
+        return this.getGrossAfterTax(gross, TaxesFormComponent.B2B_TAX);
+      }
+
+      default: {
+        return 0;
+      }
+    }
   }
 
   getGrossAfterTax(gross: number, tax: number): number {
-    return gross * (1 - tax);
+    return gross / tax;
   }
-
 }
 
